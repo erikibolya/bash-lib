@@ -6,6 +6,7 @@ This project provides a Bash script to detect the user's operating system and in
 ## Features
 - Supports multiple Linux distributions and BSD variants.
 - Uses `awk` to parse JSON configuration files.
+- Loads `bash-lib` core for additional functionality.
 - Allows specifying dependencies dynamically.
 - Ensures compatibility with major package managers.
 
@@ -21,25 +22,35 @@ This project provides a Bash script to detect the user's operating system and in
 - FreeBSD, OpenBSD, NetBSD
 
 ## Usage
-### Prerequisites
-- Ensure `bash-lib` is available and loaded.
-- Clone the repository and load the core library:
-  ```bash
-  # Load bash-lib core
-  . "../bash-lib/core.sh"
-  ```
+### Installing `bash-lib`
+If `bash-lib` is not present, you can install it using:
+```bash
+# Install bash-lib
+mkdir -p bash-lib && git clone https://github.com/erikibolya/bash-lib.git bash-lib
+```
 
-### Specifying Dependencies
+### Creating Your Script
+After installing, create your script file:
+```bash
+# Create myscript.sh
+nano myscript.sh
+```
+
+### Load library and specify dependencies
 You can specify dependencies using:
 ```bash
-# Specify dependencies
+. "../bash-lib/core.sh"
 dependencies "pgclient"
 ```
 
-### Running the Script
+### Load library scripts or define your own logic
+You can specify dependencies using:
 ```bash
-chmod +x install.sh
-./install.sh
+#delete previous backup
+rm -f dumpall.sql
+
+#run backup script
+../bash-lib/scripts/postgres_backup.sh -h 127.0.0.1 -U postgres -W password -f dumpall.sql
 ```
 
 ## Provided Functions
@@ -56,7 +67,7 @@ This script provides several helper functions for package management:
 
 ## Configuration Files
 ### `commands_mappings.json`
-Defines installation commands for each distribution:
+Defines commands for each distribution:
 ```json
 {
     "install": {
