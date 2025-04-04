@@ -1,0 +1,44 @@
+{
+    "install": {
+        "debian": "apt-get install -y",
+        "alpine": "apk --update add",
+        "centos": "yum install -y",
+        "fedora": "dnf install -y",
+        "redhat": "yum install -y",
+        "arch": "pacman -S --noconfirm",
+        "gentoo": "emerge --ask --verbose",
+        "suse": "zypper install -y",
+        "homebrew": "brew install",
+        "freebsd": "pkg install -y",
+        "openbsd": "pkg_add -uU",
+        "netbsd": "pkgin -y"
+    },
+    "update": {
+        "debian": "apt-get update",
+        "alpine": "apk update",
+        "centos": "yum makecache",
+        "fedora": "dnf makecache",
+        "redhat": "yum makecache",
+        "arch": "pacman -Sy",
+        "gentoo": "emerge --sync",
+        "suse": "zypper refresh",
+        "homebrew": "brew update",
+        "freebsd": "pkg update",
+        "openbsd": "pkg_add -u",
+        "netbsd": "pkgin -y update"
+    },
+    "upgrade": {
+        "debian": "apt-get upgrade -y",
+        "alpine": "apk upgrade",
+        "centos": "yum upgrade -y",
+        "fedora": "dnf upgrade -y",
+        "redhat": "yum upgrade -y",
+        "arch": "pacman -Syu --noconfirm",
+        "gentoo": "emerge --ask --update --changed-use --deep @world",
+        "suse": "zypper update -y",
+        "homebrew": "brew upgrade",
+        "freebsd": "pkg upgrade -y",
+        "openbsd": "pkg_add -uU",
+        "netbsd": "pkgin -y upgrade"
+      }
+}
