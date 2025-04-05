@@ -39,7 +39,7 @@ nano myscript.sh
 ### Load library and specify dependencies
 You can specify dependencies using:
 ```bash
-. "../bash-lib/core.sh"
+. "/bash-lib/core.sh"
 dependencies "pgclient"
 ```
 
@@ -50,7 +50,7 @@ You can specify dependencies using:
 rm -f dumpall.sql
 
 #run backup script
-../bash-lib/scripts/postgres_backup.sh -h 127.0.0.1 -U postgres -W password -f dumpall.sql
+/bash-lib/scripts/postgres_backup.sh -h 127.0.0.1 -U postgres -W password -f dumpall.sql
 ```
 
 ## Provided Functions
