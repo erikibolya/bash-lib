@@ -1,7 +1,7 @@
 # Install Coreutils & Docker Script
 
 ## Overview
-This project provides a Bash script to detect the user's operating system and install `coreutils` or `docker-ce` dynamically using pre-defined JSON mappings for package managers and package names.
+This project provides a Bash scripts to detect the user's operating system and install dependencies dynamically using pre-defined JSON mappings for package managers and package names.
 
 ## Features
 - Supports multiple Linux distributions and BSD variants.
