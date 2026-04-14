@@ -5,5 +5,5 @@ echo $0;
 #dependencies "pgclient" "docker-ce"
 #uncomment and modify lines to test predefined scripts or create your own
 
-#./scripts/postgres_backup.sh -h 192.168.68.115 -U postgres -W Xts80i2e2rr4jvO1
-#./scripts/postgres_backup.sh -h 192.168.68.115 -U postgres -W Xts80i2e2rr4jvO1 -f pg_dump.sql
+#./scripts/postgres_backup.sh -h 192.168.68.115 -U postgres -W examplepassword
+#./scripts/postgres_backup.sh -h 192.168.68.115 -U postgres -W examplepassword -f pg_dump.sql
