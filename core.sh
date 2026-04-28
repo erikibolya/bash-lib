@@ -24,7 +24,7 @@ file_exists() {
     if [[ -f "$file" ]]; then
         return 0
     else
-        cecho $YELLOW "WARNING: File '$file' not found." >&2
+#        cecho $YELLOW "WARNING: File '$file' not found." >&2
         return 1
     fi
 }
@@ -77,18 +77,60 @@ get_distro_type() {
 
 # Function to load dependencies
 dependencies() {
-    update_package_lists || return 1
     local dependencies=("$@")
     local dependency=""
     local installers_path="$(get_current_dir)/installers"
-    
+    local root_required=0
+    local pending_dependencies=()
+
+    # First scan all dependencies and determine whether root will be required
     for dependency in "${dependencies[@]}"; do
         local file="$installers_path/install_$dependency.sh"
+
+        if file_exists "$file"; then
+            cecho $YELLOW "Custom installer found for '$dependency': $file"
+            pending_dependencies+=("$dependency")
+            root_required=1
+        else
+			package_is_installed "$dependency"
+			status=$?
+
+			if [[ $status -eq 0 ]]; then
+				cecho $GREEN "Dependency '$dependency' is already installed."
+			elif [[ $status -eq 1 ]]; then
+				pending_dependencies+=("$dependency")
+                root_required=1
+			fi
+        fi
+    done
+
+    # Everything is already installed and no custom installer is needed
+    if [ ${#pending_dependencies[@]} -eq 0 ]; then
+        return 0
+    fi
+
+    # Root is required for custom installers or missing packages
+    if [ "$EUID" -ne 0 ]; then
+        cecho $RED "Root is required for installing: ${pending_dependencies[*]}"
+        return 1
+    fi
+
+    # Update package lists before installation
+    cecho $YELLOW "Updating package lists..."
+    update_package_lists || return 1
+
+    # Process dependencies
+    for dependency in "${pending_dependencies[@]}"; do
+        local file="$installers_path/install_$dependency.sh"
+
         if file_exists "$file"; then
             cecho $BLUE "Sourcing installer script: $file"
-            source "$file"
+            source "$file" || return 1
         else
-            package_install "$dependency" || { cecho $RED "Error: Failed to install dependency '$dependency'." >&2; return 1; }
+            package_install "$dependency" || {
+                cecho $RED "Error: Failed to install dependency '$dependency'." >&2
+                return 1
+            }
         fi
     done
 }
@@ -190,6 +232,26 @@ get_distro_specific_command() {
     value=$(trim "$value")
     value=$(trim "$value" '"')
     echo $value
+}
+
+# Function to check whether a package is installed
+package_is_installed() {
+    local package
+    local distro
+    distro=$(get_distro_type) || return 1
+    local check_command
+    check_command=$(get_distro_specific_command "check_package" "$distro") || return 1
+
+    package=$(translate_package_name "$1" "$distro")
+
+    if [[ -z "$check_command" ]]; then
+        cecho $RED "Error: No check package command found for distro '$distro'." >&2
+        return 1
+    fi
+
+    cecho $BLUE "Checking package: $package using: $check_command"
+
+    eval "$check_command $package" >/dev/null 2>&1
 }
 
 # Function to install a package

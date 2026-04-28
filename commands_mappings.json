@@ -1,5 +1,19 @@
 {
-    "install": {
+    "check_package": {
+        "debian": "dpkg -s",
+		"alpine": "apk info -e",
+		"centos": "rpm -q",
+		"fedora": "rpm -q",
+		"redhat": "rpm -q",
+		"arch": "pacman -Qi",
+		"gentoo": "qlist -I",
+		"suse": "rpm -q",
+		"homebrew": "brew list --versions",
+		"freebsd": "pkg info",
+		"openbsd": "pkg_info -e",
+		"netbsd": "pkg_info"
+    },
+	"install": {
         "debian": "apt-get install -y",
         "alpine": "apk --update add",
         "centos": "yum install -y",

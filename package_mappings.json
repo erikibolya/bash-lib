@@ -124,6 +124,20 @@
         "freebsd": "docker",
         "openbsd": "docker",
         "netbsd": "docker"
-    }
+    },
+	"python3": {
+		"debian": "python3",
+		"alpine": "python3",
+		"centos": "python3",
+		"fedora": "python3",
+		"redhat": "python3",
+		"arch": "python",
+		"gentoo": "dev-lang/python:3.11",
+		"suse": "python3",
+		"homebrew": "python@3.12",
+		"freebsd": "python3",
+		"openbsd": "python3",
+		"netbsd": "python3"
+	}
     
 }
