@@ -12,6 +12,12 @@ usage() {
 Usage:
   my-ssh --list [--config PATH]
   my-ssh [--config PATH] [--dry-run] [--open] <server> [extra ssh args]
+  
+Examples:
+  ./my-ssh.sh --list
+  ./my-ssh.sh production
+  ./my-ssh.sh production -N -L 0.0.0.0:9000:172.17.0.1:9000
+  ./my-ssh.sh --config my-ssh-example.yaml bastion -A
 
 Options:
   --list         List configured servers and exit
@@ -30,6 +36,7 @@ require_cmd() {
 }
 
 # --- ROBUST SSH-AGENT HELPER ---
+# Ensures the private key is loaded into an agent socket[cite: 1]
 ensure_ssh_agent() {
     local key_path="$1"
     [[ -z "$key_path" || ! -f "$key_path" ]] && return 0
@@ -37,47 +44,37 @@ ensure_ssh_agent() {
     local agent_sock="/tmp/ssh-agent-$(id -u).sock"
     export SSH_AUTH_SOCK="$agent_sock"
 
-    # 1. Properly capture the exit code of ssh-add
     local rc=0
     ssh-add -l >/dev/null 2>&1 || rc=$?
 
-    # rc 2 means the agent is unreachable or the socket is dead
     if [[ "$rc" -eq 2 ]]; then
-        # Force cleanup of any stale file/folder at that path
         rm -rf "$agent_sock"
-        
-        # Start the agent. We use a subshell to avoid eval issues.
-        # ssh-agent -a binds the agent to the specific socket file.
         if ! ssh-agent -a "$agent_sock" >/dev/null; then
             echo "Error: Failed to start ssh-agent process." >&2
             return 1
         fi
         
-        # 2. Wait and verify the socket file is actually created
         local timeout=10
         while [[ ! -S "$agent_sock" ]]; do
             if (( timeout-- <= 0 )); then
                 echo "Error: Timeout waiting for socket $agent_sock" >&2
-                # Diagnostic: what is actually there?
-                ls -la "$agent_sock" 2>/dev/null || echo "File does not exist."
                 return 1
             fi
             sleep 0.2
         done
     fi
 
-    # 3. Add the key if it's not already loaded
     local key_fp
     key_fp=$(ssh-keygen -lf "$key_path" | awk '{print $2}')
     
-    # Use a safe check for loaded keys
     if ! ssh-add -l 2>/dev/null | grep -q "$key_fp"; then
         echo "Key not in agent. Adding: $key_path"
         ssh-add "$key_path"
     fi
 }
-# -------------------------------
 
+# --- YAML PARSER VIA PYTHON ---
+# Calls Python to parse the YAML inventory file[cite: 1]
 py_yaml() {
     local mode="$1"
     local config="$2"
@@ -150,6 +147,7 @@ print(value)
 PY
 }
 
+# Displays a list of all configured servers[cite: 1]
 list_servers() {
     local config="$1"
     local lines
@@ -162,48 +160,50 @@ list_servers() {
         return 1
     fi
 
-    echo "Available servers:"
+    cecho "$CYAN" "Available servers:"
     echo
     while IFS=$'\t' read -r name target details; do
         [[ -z "$name" ]] && continue
         if [[ -n "${details:-}" ]]; then
-            printf '  %-20s %s — %s\n' "$name" "$target" "$details"
+            printf "  ${GREEN}%-20s${RESET} %s — %s\n" "$name" "$target" "$details"
         else
-            printf '  %-20s %s\n' "$name" "$target"
+            printf "  ${GREEN}%-20s${RESET} %s\n" "$name" "$target"
         fi
     done <<< "$lines"
 }
 
+# Extracts the first valid local forward spec (-L) from arguments[cite: 1, 2]
 extract_local_forward_spec() {
-    local arg value part_count
-    local i=0
-    while (( i < $# )); do
-        arg="${!((i+1))}"
-        value=""
-        if [[ "$arg" == "-L" ]] && (( i + 1 < $# )); then
-            value="${!((i+2))}"
-            ((i+=2))
-        elif [[ "$arg" == -L* ]] && [[ ${#arg} -gt 2 ]]; then
-            value="${arg:2}"
-            ((i+=1))
-        else
-            ((i+=1))
-            continue
+    local i=1
+    while [[ $i -le $# ]]; do
+        local arg="${!i}"
+        local value=""
+        
+        # Handle both -L value and -Lvalue syntax[cite: 1]
+        if [[ "$arg" == "-L" ]]; then
+            ((i++))
+            [[ $i -le $# ]] && value="${!i}"
+        elif [[ "$arg" == -L* ]]; then
+            value="${arg#-L}"
         fi
 
-        IFS=':' read -r -a parts <<< "$value"
-        part_count=${#parts[@]}
-        if (( part_count == 4 )); then
-            printf '%s\t%s\n' "${parts[0]}" "${parts[1]}"
-            return 0
-        elif (( part_count == 3 )); then
-            printf '\t%s\n' "${parts[0]}"
-            return 0
+        if [[ -n "$value" ]]; then
+            # Case 1: bind_address:port:remote_host:remote_port (4 parts)[cite: 1, 2]
+            if [[ "$value" =~ ^([^:]+):([0-9]+):[^:]+:[0-9]+$ ]]; then
+                printf '%s\t%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+                return 0
+            # Case 2: port:remote_host:remote_port (3 parts)[cite: 1, 2]
+            elif [[ "$value" =~ ^([0-9]+):[^:]+:[0-9]+$ ]]; then
+                printf '\t%s\n' "${BASH_REMATCH[1]}"
+                return 0
+            fi
         fi
+        ((i++))
     done
     return 1
 }
 
+# Waits for a local port to become active[cite: 1]
 wait_for_local_port() {
     local host="$1" port="$2" timeout="${3:-5}"
     python3 - "$host" "$port" "$timeout" <<'PY'
@@ -222,6 +222,7 @@ sys.exit(1)
 PY
 }
 
+# Detects whether the local port is HTTP or HTTPS[cite: 1]
 detect_local_url_scheme() {
     local host="$1" port="$2"
     python3 - "$host" "$port" <<'PY'
@@ -263,6 +264,7 @@ quote_args() {
     printf '%s\n' "${out# }"
 }
 
+# --- MAIN LOGIC ---
 main() {
     require_cmd ssh
     require_cmd python3
@@ -274,39 +276,17 @@ main() {
 
     while (($#)); do
         case "$1" in
-            --list)
-                do_list=1
-                shift
-                ;;
-            --dry-run)
-                dry_run=1
-                shift
-                ;;
-            --open)
-                do_open=1
-                shift
-                ;;
+            --list) do_list=1; shift ;;
+            --dry-run) dry_run=1; shift ;;
+            --open) do_open=1; shift ;;
             --config)
                 [[ $# -ge 2 ]] || { echo "Error: --config requires a path" >&2; exit 1; }
                 config="$2"
-                shift 2
-                ;;
-            --help|-h)
-                usage
-                exit 0
-                ;;
-            --)
-                shift
-                break
-                ;;
-            -*)
-                echo "Error: unknown option: $1" >&2
-                usage >&2
-                exit 1
-                ;;
-            *)
-                break
-                ;;
+                shift 2 ;;
+            --help|-h) usage; exit 0 ;;
+            --) shift; break ;;
+            -*) echo "Error: unknown option: $1" >&2; usage >&2; exit 1 ;;
+            *) break ;;
         esac
     done
 
@@ -325,7 +305,6 @@ main() {
         rc=$?
         if [[ $rc -eq 4 ]]; then
             echo "Error: server '$server' was not found in $config" >&2
-            echo >&2
             list_servers "$config" >&2 || true
             exit 1
         fi
@@ -338,7 +317,6 @@ main() {
 
     key="${key/#\~/$HOME}"
 
-    # --- ACTIVATE AGENT ---
     if [[ -n "$key" ]] && [[ "$dry_run" -eq 0 ]]; then
         ensure_ssh_agent "$key"
     fi
@@ -351,7 +329,7 @@ main() {
     command+=("${extra_ssh_args[@]}")
     command+=("$host")
 
-    echo "Resolved command:"
+    cecho "$GREEN" "Resolved command:"
     echo "  $(quote_args "${command[@]}")"
 
     local lspec local_bind local_port browser_host test_host scheme url has_N=0
@@ -359,10 +337,15 @@ main() {
         [[ "$arg" == "-N" ]] && has_N=1
     done
 
-    if lspec="$(extract_local_forward_spec "${extra_ssh_args[@]}" 2>/dev/null || true)" && [[ -n "$lspec" ]]; then
+    # Extract tunnel spec and check for success[cite: 1]
+    if lspec=$(extract_local_forward_spec "${extra_ssh_args[@]}"); then
         IFS=$'\t' read -r local_bind local_port <<< "$lspec"
+        
+        # Map 0.0.0.0 to localhost for browser usage[cite: 2]
         browser_host="${local_bind:-localhost}"
         [[ "$browser_host" == "0.0.0.0" ]] && browser_host="localhost"
+        
+        # Use 127.0.0.1 for internal port connectivity checks[cite: 1]
         test_host="$browser_host"
         [[ "$test_host" == "localhost" ]] && test_host="127.0.0.1"
 
@@ -379,12 +362,14 @@ main() {
             if wait_for_local_port "$test_host" "$local_port" 5; then
                 scheme="$(detect_local_url_scheme "$test_host" "$local_port")"
                 url="${scheme}://${browser_host}:${local_port}/"
-                echo "Open in browser: $url"
+                
+                cecho "$CYAN" "Tunnel ready: $url"
+                
                 if (( do_open )); then
                     open_url "$url" || true
                 fi
             else
-                echo "Tunnel started, but local port ${local_port} on ${browser_host} did not become ready in time." >&2
+                echo "Tunnel started, but local port ${local_port} on ${browser_host} did not become ready." >&2
             fi
 
             wait "$ssh_pid"

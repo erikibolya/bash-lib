@@ -1,0 +1,14 @@
+servers:
+  production:
+    host: 10.0.0.15
+    user: root
+    key: ~/.ssh/id_ed25519
+    port: 2222
+    desc: Production server
+    proxyjump: admin@bastion.example.com
+
+  bastion:
+    host: bastion.example.local
+    user: admin
+    key: ~/.ssh/id_ed25519
+    desc: Bastion host
