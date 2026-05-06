@@ -19,12 +19,6 @@ Options:
   --dry-run      Print resolved ssh command and exit
   --open         If -N and -L are used, open detected local URL in browser
   -h, --help     Show this help
-  
-Examples:
-  ./my-ssh.sh --list
-  ./my-ssh.sh production
-  ./my-ssh.sh production -N -L 0.0.0.0:9000:172.17.0.1:9000
-  ./my-ssh.sh --config ~/.ssh/servers.yaml bastion -A
 USAGE
 }
 
@@ -34,6 +28,55 @@ require_cmd() {
         exit 1
     }
 }
+
+# --- ROBUST SSH-AGENT HELPER ---
+ensure_ssh_agent() {
+    local key_path="$1"
+    [[ -z "$key_path" || ! -f "$key_path" ]] && return 0
+
+    local agent_sock="/tmp/ssh-agent-$(id -u).sock"
+    export SSH_AUTH_SOCK="$agent_sock"
+
+    # 1. Properly capture the exit code of ssh-add
+    local rc=0
+    ssh-add -l >/dev/null 2>&1 || rc=$?
+
+    # rc 2 means the agent is unreachable or the socket is dead
+    if [[ "$rc" -eq 2 ]]; then
+        # Force cleanup of any stale file/folder at that path
+        rm -rf "$agent_sock"
+        
+        # Start the agent. We use a subshell to avoid eval issues.
+        # ssh-agent -a binds the agent to the specific socket file.
+        if ! ssh-agent -a "$agent_sock" >/dev/null; then
+            echo "Error: Failed to start ssh-agent process." >&2
+            return 1
+        fi
+        
+        # 2. Wait and verify the socket file is actually created
+        local timeout=10
+        while [[ ! -S "$agent_sock" ]]; do
+            if (( timeout-- <= 0 )); then
+                echo "Error: Timeout waiting for socket $agent_sock" >&2
+                # Diagnostic: what is actually there?
+                ls -la "$agent_sock" 2>/dev/null || echo "File does not exist."
+                return 1
+            fi
+            sleep 0.2
+        done
+    fi
+
+    # 3. Add the key if it's not already loaded
+    local key_fp
+    key_fp=$(ssh-keygen -lf "$key_path" | awk '{print $2}')
+    
+    # Use a safe check for loaded keys
+    if ! ssh-add -l 2>/dev/null | grep -q "$key_fp"; then
+        echo "Key not in agent. Adding: $key_path"
+        ssh-add "$key_path"
+    fi
+}
+# -------------------------------
 
 py_yaml() {
     local mode="$1"
@@ -294,6 +337,11 @@ main() {
     proxyjump="$(py_yaml get "$config" "$server" proxyjump || true)"
 
     key="${key/#\~/$HOME}"
+
+    # --- ACTIVATE AGENT ---
+    if [[ -n "$key" ]] && [[ "$dry_run" -eq 0 ]]; then
+        ensure_ssh_agent "$key"
+    fi
 
     local -a command=(ssh)
     [[ -n "$port" ]] && command+=(-p "$port")
