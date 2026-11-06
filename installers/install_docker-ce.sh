@@ -10,7 +10,7 @@ if ! command_exists docker; then
     # Update apt package index
     update_package_lists
 
-    local distro_type=$(get_distro_type)
+    distro_type=$(get_distro_type)
 
     if [ "$distro_type" = "debian" ]; then
         # Install necessary package to allow apt to use a repository over HTTPS
